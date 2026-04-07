@@ -193,13 +193,17 @@ async function getTabId(source) {
 }
 
 /**
- * Activate a tab AND focus its parent window to the foreground.
+ * Keep a tab available without forcing its window to the foreground.
+ */
+async function keepTab(tabId) {
+  await chrome.tabs.get(tabId);
+}
+
+/**
+ * Activate a tab inside the browser without forcing the browser window to the front.
  */
 async function focusTab(tabId) {
-  const tab = await chrome.tabs.update(tabId, { active: true });
-  if (tab.windowId) {
-    await chrome.windows.update(tab.windowId, { focused: true });
-  }
+  await chrome.tabs.update(tabId, { active: true });
 }
 
 async function clickWithDebugger(tabId, rect) {
@@ -224,7 +228,6 @@ async function clickWithDebugger(tabId, rect) {
     const x = Math.round(rect.centerX);
     const y = Math.round(rect.centerY);
 
-    await chrome.debugger.sendCommand(target, 'Page.bringToFront');
     await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', {
       type: 'mouseMoved',
       x,
@@ -318,10 +321,59 @@ function notifyContentScriptReady(source) {
 // Reuse or create tab
 // ============================================================
 
+function tabMatchesSource(source, tabUrl, expectedUrl = '') {
+  const current = String(tabUrl || '');
+  if (!current) return false;
+
+  switch (source) {
+    case 'signup-page':
+      return current.includes('auth0.openai.com/')
+        || current.includes('auth.openai.com/')
+        || current.includes('accounts.openai.com/');
+    case 'qq-mail':
+      return current.includes('mail.qq.com/') || current.includes('wx.mail.qq.com/');
+    case 'mail-163':
+      return current.includes('mail.163.com/');
+    case 'duck-email':
+      return current.includes('duckduckgo.com/email/settings');
+    case 'vps-panel':
+      if (expectedUrl) {
+        try {
+          const currentUrl = new URL(current);
+          const targetUrl = new URL(expectedUrl);
+          return currentUrl.origin === targetUrl.origin && currentUrl.pathname === targetUrl.pathname;
+        } catch {}
+      }
+      return false;
+    default:
+      return false;
+  }
+}
+
+async function findExistingTabForSource(source, url = '') {
+  const tabs = await chrome.tabs.query({});
+  return tabs.find(tab => tabMatchesSource(source, tab.url, url)) || null;
+}
+
 async function reuseOrCreateTab(source, url, options = {}) {
+  const { activate = false } = options;
+  let tabId = null;
+
   const alive = await isTabAlive(source);
   if (alive) {
-    const tabId = await getTabId(source);
+    tabId = await getTabId(source);
+  } else {
+    const existingTab = await findExistingTabForSource(source, url);
+    if (existingTab?.id) {
+      tabId = existingTab.id;
+      const registry = await getTabRegistry();
+      registry[source] = { tabId, ready: false };
+      await setState({ tabRegistry: registry });
+      console.log(LOG_PREFIX, `Adopted existing tab ${source} (${tabId})`);
+    }
+  }
+
+  if (tabId) {
 
     // Mark as not ready BEFORE navigating — so READY signal from new page is captured correctly
     const registry = await getTabRegistry();
@@ -329,7 +381,10 @@ async function reuseOrCreateTab(source, url, options = {}) {
     await setState({ tabRegistry: registry });
 
     // Navigate existing tab to new URL
-    await chrome.tabs.update(tabId, { url, active: true });
+    await chrome.tabs.update(tabId, { url, active: activate });
+    if (activate) {
+      await focusTab(tabId);
+    }
     console.log(LOG_PREFIX, `Reused tab ${source} (${tabId}), navigated to ${url.slice(0, 60)}`);
 
     // Wait for page load complete (with 30s timeout)
@@ -360,7 +415,7 @@ async function reuseOrCreateTab(source, url, options = {}) {
   }
 
   // Create new tab
-  const tab = await chrome.tabs.create({ url, active: true });
+  const tab = await chrome.tabs.create({ url, active: activate });
   console.log(LOG_PREFIX, `Created new tab ${source} (${tab.id})`);
 
   // If dynamic injection needed (VPS panel), inject scripts after load
@@ -470,16 +525,6 @@ async function closeAllRegisteredTabs(options = {}) {
     await setState({ tabRegistry: newRegistry });
   } else {
     await setState({ tabRegistry: {} });
-  }
-}
-
-/**
- * Activate a tab and bring its window to the foreground.
- */
-async function focusTab(tabId) {
-  const tab = await chrome.tabs.update(tabId, { active: true });
-  if (tab.windowId) {
-    await chrome.windows.update(tab.windowId, { focused: true });
   }
 }
 
@@ -1075,7 +1120,7 @@ async function executeStep1(state) {
     throw new Error('No VPS URL configured. Enter VPS address in Side Panel first.');
   }
   await addLog(`Step 1: Opening VPS panel...`);
-  await reuseOrCreateTab('vps-panel', state.vpsUrl, { inject: ['content/utils.js', 'content/vps-panel.js'] });
+  await reuseOrCreateTab('vps-panel', state.vpsUrl, { inject: ['content/utils.js', 'content/vps-panel.js'], activate: false });
 
   await sendToContentScript('vps-panel', {
     type: 'EXECUTE_STEP',
@@ -1094,7 +1139,7 @@ async function executeStep2(state) {
     throw new Error('No OAuth URL. Complete step 1 first.');
   }
   await addLog('Step 2: Opening OAuth URL directly...');
-  await reuseOrCreateTab('signup-page', state.oauthUrl);
+  await reuseOrCreateTab('signup-page', state.oauthUrl, { activate: true });
 
   await sendToContentScript('signup-page', {
     type: 'EXECUTE_STEP',
@@ -1147,6 +1192,10 @@ async function executeStep3(state) {
   await saveAccount({ email, password, createdAt: new Date().toISOString() });
 
   await addLog(`Step 3: Filling email ${email}, password generated (${password.length} chars)`);
+  const signupTabId = await getTabId('signup-page');
+  if (signupTabId) {
+    await focusTab(signupTabId);
+  }
   await sendToContentScript('signup-page', {
     type: 'EXECUTE_STEP',
     step: 3,
@@ -1175,7 +1224,7 @@ async function executeStep4(state) {
     const tabId = await getTabId(mail.source);
     await focusTab(tabId);
   } else {
-    await reuseOrCreateTab(mail.source, mail.url);
+    await reuseOrCreateTab(mail.source, mail.url, { activate: true });
   }
 
   const result = await sendToContentScript(mail.source, {
@@ -1224,6 +1273,10 @@ async function executeStep5(state) {
 
   await addLog(`Step 5: Generated name: ${firstName} ${lastName}, Birthday: ${year}-${month}-${day}`);
 
+  const signupTabId = await getTabId('signup-page');
+  if (signupTabId) {
+    await focusTab(signupTabId);
+  }
   await sendToContentScript('signup-page', {
     type: 'EXECUTE_STEP',
     step: 5,
@@ -1246,8 +1299,8 @@ async function executeStep6(state) {
   const STEP6_RETRY_AFTER_MS = 7000;
   const STEP6_MAX_CLICK_ATTEMPTS = 2;
 
-  await addLog('Step 6: Waiting 4s before starting...');
-  await sleepWithStop(4000);
+  await addLog('Step 6: Waiting 6s before starting...');
+  await sleepWithStop(6000);
   await addLog('Step 6: Setting up localhost redirect listener...');
 
   // Register webNavigation listener (scoped to this step)
@@ -1353,10 +1406,10 @@ async function executeStep6(state) {
         throwIfExecutionStopped();
         signupTabId = await getTabId('signup-page');
         if (signupTabId) {
-          await chrome.tabs.update(signupTabId, { active: true });
-          await addLog('Step 6: Switched to auth page. Preparing debugger click...');
+          await focusTab(signupTabId);
+          await addLog('Step 6: Reusing auth page. Preparing debugger click...');
         } else {
-          signupTabId = await reuseOrCreateTab('signup-page', state.oauthUrl);
+          signupTabId = await reuseOrCreateTab('signup-page', state.oauthUrl, { activate: true });
           await addLog('Step 6: Auth tab reopened. Preparing debugger click...');
         }
 
@@ -1455,18 +1508,25 @@ async function executeStep7(state) {
   const alive = tabId && await isTabAlive('vps-panel');
 
   if (!alive) {
-    // Create new tab
-    const tab = await chrome.tabs.create({ url: state.vpsUrl, active: true });
-    tabId = tab.id;
-    await new Promise(resolve => {
-      const listener = (tid, info) => {
-        if (tid === tabId && info.status === 'complete') {
-          chrome.tabs.onUpdated.removeListener(listener);
-          resolve();
-        }
-      };
-      chrome.tabs.onUpdated.addListener(listener);
-    });
+    const existingTab = await findExistingTabForSource('vps-panel', state.vpsUrl);
+    if (existingTab?.id) {
+      tabId = existingTab.id;
+      const registry = await getTabRegistry();
+      registry['vps-panel'] = { tabId, ready: false };
+      await setState({ tabRegistry: registry });
+      await chrome.tabs.update(tabId, { url: state.vpsUrl, active: true });
+      await new Promise(resolve => {
+        const listener = (tid, info) => {
+          if (tid === tabId && info.status === 'complete') {
+            chrome.tabs.onUpdated.removeListener(listener);
+            resolve();
+          }
+        };
+        chrome.tabs.onUpdated.addListener(listener);
+      });
+    } else {
+      throw new Error('VPS panel tab from step 1 is missing. Do not close it; rerun step 1 first.');
+    }
   } else {
     await focusTab(tabId);
   }
