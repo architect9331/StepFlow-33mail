@@ -1243,6 +1243,9 @@ async function executeStep6(state) {
     throw new Error('No OAuth URL. Complete step 1 first.');
   }
 
+  const STEP6_RETRY_AFTER_MS = 7000;
+  const STEP6_MAX_CLICK_ATTEMPTS = 2;
+
   await addLog('Step 6: Waiting 4s before starting...');
   await sleepWithStop(4000);
   await addLog('Step 6: Setting up localhost redirect listener...');
@@ -1251,6 +1254,10 @@ async function executeStep6(state) {
   return new Promise((resolve, reject) => {
     let resolved = false;
     let monitorTimer = null;
+    let monitorBusy = false;
+    let clickAttempts = 0;
+    let lastClickAt = 0;
+    let signupTabId = null;
 
     const cleanupListener = () => {
       if (webNavListener) {
@@ -1314,13 +1321,37 @@ async function executeStep6(state) {
 
     chrome.webNavigation.onBeforeNavigate.addListener(webNavListener);
 
+    const dispatchStep6Click = async (reason = 'initial') => {
+      throwIfExecutionStopped();
+
+      const clickResult = await sendToContentScript('signup-page', {
+        type: 'STEP6_FIND_AND_CLICK',
+        source: 'background',
+        payload: {},
+      });
+
+      if (clickResult?.error) {
+        throw new Error(clickResult.error);
+      }
+
+      await clickWithDebugger(signupTabId, clickResult?.rect);
+      clickAttempts += 1;
+      lastClickAt = Date.now();
+
+      if (reason === 'initial') {
+        await addLog('Step 6: Debugger click dispatched, waiting for redirect...');
+      } else {
+        await addLog(`Step 6: Retry click dispatched (${clickAttempts}/${STEP6_MAX_CLICK_ATTEMPTS}), waiting for redirect...`, 'warn');
+      }
+    };
+
     // After step 5, the auth page shows a consent screen ("使用 ChatGPT 登录到 Codex")
     // with a "继续" button. We locate the button in-page, then click it through
     // the debugger Input API directly.
     (async () => {
       try {
         throwIfExecutionStopped();
-        let signupTabId = await getTabId('signup-page');
+        signupTabId = await getTabId('signup-page');
         if (signupTabId) {
           await chrome.tabs.update(signupTabId, { active: true });
           await addLog('Step 6: Switched to auth page. Preparing debugger click...');
@@ -1329,20 +1360,8 @@ async function executeStep6(state) {
           await addLog('Step 6: Auth tab reopened. Preparing debugger click...');
         }
 
-        const clickResult = await sendToContentScript('signup-page', {
-          type: 'STEP6_FIND_AND_CLICK',
-          source: 'background',
-          payload: {},
-        });
-
-        if (clickResult?.error) {
-          throw new Error(clickResult.error);
-        }
-
         if (!resolved) {
-          throwIfExecutionStopped();
-          await clickWithDebugger(signupTabId, clickResult?.rect);
-          await addLog('Step 6: Debugger click dispatched, waiting for redirect...');
+          await dispatchStep6Click('initial');
 
           monitorTimer = setInterval(() => {
             if (resolved) return;
@@ -1350,6 +1369,9 @@ async function executeStep6(state) {
               cancelStep();
               return;
             }
+
+            if (monitorBusy) return;
+            monitorBusy = true;
 
             (async () => {
               try {
@@ -1381,8 +1403,21 @@ async function executeStep6(state) {
 
                 if (result?.successPage) {
                   await finalizeStep6({ successPage: true, localhostUrl: probedUrl.startsWith('http://localhost') ? probedUrl : null });
+                  return;
                 }
-              } catch {}
+
+                const noReactionFor = Date.now() - lastClickAt;
+                if (clickAttempts < STEP6_MAX_CLICK_ATTEMPTS && noReactionFor >= STEP6_RETRY_AFTER_MS) {
+                  await addLog(`Step 6: No visible response after ${STEP6_RETRY_AFTER_MS / 1000}s, retrying click...`, 'warn');
+                  await dispatchStep6Click('retry');
+                }
+              } catch (err) {
+                if (!resolved) {
+                  await addLog(`Step 6: Monitor warning: ${err.message}`, 'warn');
+                }
+              } finally {
+                monitorBusy = false;
+              }
             })();
           }, 700);
         }
