@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>stepflow 33mail</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+      </svg>
+      <h1>stepflow 33mail</h1>
+    </div>
+    <div class="header-btns">
+      <div class="run-group">
+        <input type="number" id="input-run-count" class="run-count-input" value="1" min="1" max="50" title="批量执行次数" />
+        <button id="btn-auto-run" class="btn btn-success" title="Run all steps automatically">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Auto
+        </button>
+        <button id="btn-stop-run" class="btn btn-ghost" title="Stop current task" disabled>Stop</button>
+      </div>
+      <button id="btn-reset" class="btn btn-ghost" title="Reset all steps">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+        </svg>
+      </button>
+      <button id="btn-theme" class="theme-toggle" title="Toggle theme">
+        <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+        <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <section id="data-section">
+    <div class="data-card">
+      <div class="data-row">
+        <span class="data-label">VPS</span>
+        <input type="password" id="input-vps-url" class="data-input" placeholder="请输入 VPS 管理面板地址" title="VPS 面板 OAuth 页面地址" />
+      </div>
+      <div class="data-hint">填入你的 VPS 面板 OAuth 页面地址，格式：http://ip:port/management.html#/oauth</div>
+      <div class="settings-block">
+        <div class="settings-block-header">
+          <span class="data-label">Mail</span>
+          <span class="settings-block-tag">Grouped</span>
+        </div>
+        <div class="mail-groups">
+          <div class="mail-group" data-provider="163">
+            <button type="button" class="mail-group-top" data-provider="163">
+              <span class="mail-group-name">163 Mail</span>
+              <span class="mail-group-badge">Active</span>
+            </button>
+            <span class="mail-group-host">mail.163.com</span>
+            <label class="mail-group-field">
+              <span class="mail-group-field-label">Domain</span>
+              <input type="text" id="input-email-domain-163" class="data-input mail-domain-input" data-provider="163" placeholder="例如：example.com" title="163 分组使用的域名后缀" />
+            </label>
+          </div>
+          <div class="mail-group" data-provider="qq">
+            <button type="button" class="mail-group-top" data-provider="qq">
+              <span class="mail-group-name">QQ Mail</span>
+              <span class="mail-group-badge">Active</span>
+            </button>
+            <span class="mail-group-host">wx.mail.qq.com</span>
+            <label class="mail-group-field">
+              <span class="mail-group-field-label">Domain</span>
+              <input type="text" id="input-email-domain-qq" class="data-input mail-domain-input" data-provider="qq" placeholder="例如：example.com" title="QQ 分组使用的域名后缀" />
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="data-hint">每个 Mail 分组会单独保存 Domain，点击分组即可切换当前收码邮箱</div>
+      <div class="data-row">
+        <span class="data-label">Email</span>
+        <input type="text" id="input-email" class="data-input" placeholder="步骤 3 自动生成" title="当前运行生成的邮箱地址" />
+      </div>
+      <div class="data-hint">显示本次流程自动生成的邮箱地址</div>
+      <div class="data-row">
+        <span class="data-label">OAuth</span>
+        <span id="display-oauth-url" class="data-value mono truncate">Waiting...</span>
+      </div>
+      <div class="data-row">
+        <span class="data-label">Callback</span>
+        <span id="display-localhost-url" class="data-value mono truncate">Waiting...</span>
+      </div>
+    </div>
+    <div id="status-bar" class="status-bar">
+      <div class="status-dot"></div>
+      <span id="display-status">Ready</span>
+    </div>
+    <div id="auto-continue-bar" class="auto-continue-bar" style="display:none;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <span class="auto-hint">Update settings above, then continue</span>
+      <button id="btn-auto-continue" class="btn btn-primary btn-sm">Continue</button>
+    </div>
+    <div id="failure-intervention-bar" class="failure-intervention-bar" style="display:none;">
+      <div class="failure-info">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        <span id="failure-msg" class="failure-msg">Step failed</span>
+        <span id="failure-countdown" class="failure-countdown"></span>
+      </div>
+      <div class="failure-actions">
+        <button id="btn-failure-retry" class="btn btn-primary btn-sm">Retry</button>
+        <button id="btn-failure-skip" class="btn btn-outline btn-sm">Skip</button>
+        <button id="btn-failure-stop" class="btn btn-ghost btn-sm">Stop</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="steps-section">
+    <div class="steps-header">
+      <span class="section-label">Workflow</span>
+      <span id="steps-progress" class="steps-progress">0 / 7</span>
+    </div>
+    <div class="steps-list">
+      <div class="step-row" data-step="1">
+        <div class="step-indicator" data-step="1"><span class="step-num">1</span></div>
+        <button class="step-btn" data-step="1" title="从 VPS 面板获取 OAuth 授权链接">Get OAuth Link</button>
+        <span class="step-status" data-step="1"></span>
+      </div>
+      <div class="step-row" data-step="2">
+        <div class="step-indicator" data-step="2"><span class="step-num">2</span></div>
+        <button class="step-btn" data-step="2" title="直接打开 OAuth 页面">Open OAuth</button>
+        <span class="step-status" data-step="2"></span>
+      </div>
+      <div class="step-row" data-step="3">
+        <div class="step-indicator" data-step="3"><span class="step-num">3</span></div>
+        <button class="step-btn" data-step="3" title="生成随机邮箱并填写邮箱和密码">Generate Email / Password</button>
+        <span class="step-status" data-step="3"></span>
+      </div>
+      <div class="step-row" data-step="4">
+        <div class="step-indicator" data-step="4"><span class="step-num">4</span></div>
+        <button class="step-btn" data-step="4" title="从邮箱获取注册验证码">Get Signup Code</button>
+        <span class="step-status" data-step="4"></span>
+      </div>
+      <div class="step-row" data-step="5">
+        <div class="step-indicator" data-step="5"><span class="step-num">5</span></div>
+        <button class="step-btn" data-step="5" title="自动填写姓名和生日">Fill Name / Birthday</button>
+        <span class="step-status" data-step="5"></span>
+      </div>
+      <div class="step-row" data-step="6">
+        <div class="step-indicator" data-step="6"><span class="step-num">6</span></div>
+        <button class="step-btn" data-step="6" title="完成 OAuth 授权验证">Complete OAuth</button>
+        <span class="step-status" data-step="6"></span>
+      </div>
+      <div class="step-row" data-step="7">
+        <div class="step-indicator" data-step="7"><span class="step-num">7</span></div>
+        <button class="step-btn" data-step="7" title="在 VPS 面板验证账号">VPS Verify</button>
+        <span class="step-status" data-step="7"></span>
+      </div>
+    </div>
+  </section>
+
+  <section id="accounts-section">
+    <div class="accounts-header">
+      <span class="section-label">Accounts</span>
+      <span id="accounts-count" class="steps-progress">0</span>
+      <div class="accounts-actions">
+        <button id="btn-export-accounts" class="btn btn-ghost btn-xs" title="Export as JSON">Export</button>
+        <button id="btn-clear-accounts" class="btn btn-ghost btn-xs" title="Clear all accounts">Clear</button>
+        <button id="btn-toggle-accounts" class="btn btn-ghost btn-xs" title="Toggle list">
+          <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+      </div>
+    </div>
+    <div id="accounts-list" class="accounts-list"></div>
+  </section>
+
+  <section id="log-section">
+    <div class="log-header">
+      <span class="section-label">Console</span>
+      <button id="btn-clear-log" class="btn btn-ghost btn-xs" title="Clear log">Clear</button>
+    </div>
+    <div id="log-area"></div>
+  </section>
+
+  <div id="toast-container"></div>
+  <script src="sidepanel.js"></script>
+</body>
+</html>
