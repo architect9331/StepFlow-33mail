@@ -1243,8 +1243,8 @@ async function executeStep6(state) {
     throw new Error('No OAuth URL. Complete step 1 first.');
   }
 
-  await addLog('Step 6: Waiting 2s before starting...');
-  await sleepWithStop(2000);
+  await addLog('Step 6: Waiting 4s before starting...');
+  await sleepWithStop(4000);
   await addLog('Step 6: Setting up localhost redirect listener...');
 
   // Register webNavigation listener (scoped to this step)
