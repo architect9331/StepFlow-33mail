@@ -192,6 +192,14 @@
     └── sidepanel.js         # 侧边栏逻辑
 ```
 
+## License / Attribution
+
+本项目基于 [StepFlow-Duck](https://github.com/whwh1233/StepFlow-Duck) 修改而来，并继承其 `MIT License` 授权方式。
+
+- 原项目版权声明与许可声明已保留在 [LICENSE](/Users/arc9331/Downloads/StepFlow-Duck-main（2）/LICENSE)
+- 本仓库对原项目进行了 33mail 方案适配、流程调整与 README 重写
+- 如继续分发或二次修改本项目，请一并保留原始版权声明与 MIT 许可文本
+
 ## 致谢
 
 - 原项目：[StepFlow-Duck](https://github.com/whwh1233/StepFlow-Duck)
