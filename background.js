@@ -1492,6 +1492,7 @@ async function executeStep7(state) {
   if (state.directAuthSuccess && !state.localhostUrl) {
     await addLog('Step 7: Skipped because step 6 already reached direct authentication success page.', 'ok');
     await setStepStatus(7, 'completed');
+    notifyStepComplete(7, { skipped: true, directAuthSuccess: true });
     return;
   }
 
