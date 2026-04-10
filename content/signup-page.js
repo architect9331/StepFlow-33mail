@@ -263,22 +263,230 @@ async function fillVerificationCode(step, payload) {
 }
 
 // ============================================================
-// Step 5: Fill Name & Birthday
+// Step 5: Fill Name & Birthday/Age
 // ============================================================
 
+function getBirthdaySpinButtons() {
+  return {
+    yearSpinner: document.querySelector('[role="spinbutton"][data-type="year"]'),
+    monthSpinner: document.querySelector('[role="spinbutton"][data-type="month"]'),
+    daySpinner: document.querySelector('[role="spinbutton"][data-type="day"]'),
+  };
+}
+
+function hasBirthdayFields() {
+  const { yearSpinner, monthSpinner, daySpinner } = getBirthdaySpinButtons();
+  return Boolean(
+    (yearSpinner && monthSpinner && daySpinner)
+    || document.querySelector('input[type="hidden"][name="birthday"]')
+    || document.querySelector('input[name="birthday"]')
+  );
+}
+
+function normalizeProfileMode(mode) {
+  return mode === 'age' ? 'age' : 'birthday';
+}
+
+function getFieldContextText(el) {
+  const parts = [
+    el.name,
+    el.id,
+    el.placeholder,
+    el.getAttribute('aria-label'),
+    el.getAttribute('data-type'),
+    el.getAttribute('inputmode'),
+  ];
+
+  const labelledBy = el.getAttribute('aria-labelledby');
+  if (labelledBy) {
+    labelledBy.split(/\s+/).forEach(id => {
+      const labelEl = document.getElementById(id);
+      if (labelEl?.textContent) {
+        parts.push(labelEl.textContent);
+      }
+    });
+  }
+
+  const label = el.closest('label');
+  if (label?.textContent) {
+    parts.push(label.textContent);
+  }
+
+  const parentText = el.parentElement?.textContent;
+  if (parentText) {
+    parts.push(parentText);
+  }
+
+  return parts.filter(Boolean).join(' ');
+}
+
+function getAgeField() {
+  const exactAgeInput = document.querySelector('input[name="age"]');
+  if (exactAgeInput) return exactAgeInput;
+
+  const candidates = [
+    ...document.querySelectorAll('input:not([type="hidden"]), [role="spinbutton"][data-type="age"], [role="spinbutton"]'),
+  ];
+
+  const numericInputs = candidates.filter(el => (
+    el.matches('input[type="number"], input[inputmode="numeric"], input[inputmode="decimal"]')
+  ));
+
+  let bestMatch = null;
+  let bestScore = 0;
+
+  for (const el of candidates) {
+    const text = getFieldContextText(el);
+    let score = 0;
+
+    if (/age|年龄/i.test(text)) score += 4;
+    if (el.getAttribute('data-type') === 'age') score += 5;
+    if (el.matches('input[type="number"], input[inputmode="numeric"], input[inputmode="decimal"]')) score += 1;
+    if (numericInputs.length === 1 && numericInputs[0] === el) score += 2;
+    if (el.getAttribute('data-type') === 'year' || el.getAttribute('data-type') === 'month' || el.getAttribute('data-type') === 'day') score -= 3;
+    if (el.name === 'name' || el.getAttribute('autocomplete') === 'name') score -= 3;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = el;
+    }
+  }
+
+  return bestScore >= 2 ? bestMatch : null;
+}
+
+function hasAgeField() {
+  return Boolean(getAgeField());
+}
+
+function isFocusable(el) {
+  if (!el || typeof el.matches !== 'function') return false;
+  if (el.disabled) return false;
+  if (el.getAttribute('aria-hidden') === 'true') return false;
+  if (el.getAttribute('tabindex') === '-1') return false;
+  if (el.getAttribute('aria-disabled') === 'true') return false;
+  const style = window.getComputedStyle(el);
+  if (style.display === 'none' || style.visibility === 'hidden') return false;
+  return el.matches('input:not([type="hidden"]), button, select, textarea, [role="spinbutton"], [tabindex]');
+}
+
+function focusNextFieldFrom(currentEl) {
+  const focusables = [...document.querySelectorAll('input, button, select, textarea, [role="spinbutton"], [tabindex]')]
+    .filter(isFocusable);
+  const currentIndex = focusables.indexOf(currentEl);
+  if (currentIndex === -1) return null;
+
+  for (let i = currentIndex + 1; i < focusables.length; i++) {
+    const candidate = focusables[i];
+    candidate.focus();
+    if (document.activeElement === candidate) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+async function setSpinButtonValue(el, value) {
+  el.focus();
+  await sleep(100);
+
+  document.execCommand('selectAll', false, null);
+  await sleep(50);
+
+  const valueStr = String(value);
+  for (const char of valueStr) {
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: char, code: `Digit${char}`, bubbles: true }));
+    el.dispatchEvent(new KeyboardEvent('keypress', { key: char, code: `Digit${char}`, bubbles: true }));
+    el.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertText', data: char, bubbles: true }));
+    el.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: char, bubbles: true }));
+    await sleep(50);
+  }
+
+  el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Tab', code: 'Tab', bubbles: true }));
+  el.blur();
+  await sleep(100);
+}
+
+async function fillBirthdayFields(year, month, day) {
+  const { yearSpinner, monthSpinner, daySpinner } = getBirthdaySpinButtons();
+
+  if (yearSpinner && monthSpinner && daySpinner) {
+    log('Step 5: Found React Aria DateField spinbuttons');
+
+    await setSpinButtonValue(yearSpinner, year);
+    log(`Step 5: Year set: ${year}`);
+
+    await setSpinButtonValue(monthSpinner, String(month).padStart(2, '0'));
+    log(`Step 5: Month set: ${month}`);
+
+    await setSpinButtonValue(daySpinner, String(day).padStart(2, '0'));
+    log(`Step 5: Day set: ${day}`);
+
+    const hiddenBirthday = document.querySelector('input[type="hidden"][name="birthday"]');
+    if (hiddenBirthday) {
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      hiddenBirthday.value = dateStr;
+      hiddenBirthday.dispatchEvent(new Event('change', { bubbles: true }));
+      log(`Step 5: Hidden birthday input set: ${dateStr}`);
+    }
+
+    return true;
+  }
+
+  const hiddenBirthday = document.querySelector('input[name="birthday"]');
+  if (hiddenBirthday) {
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    hiddenBirthday.value = dateStr;
+    hiddenBirthday.dispatchEvent(new Event('change', { bubbles: true }));
+    log(`Step 5: Birthday set via hidden input: ${dateStr}`);
+    return true;
+  }
+
+  return false;
+}
+
+async function fillAgeField(age, preferredField = null) {
+  const ageField = preferredField && isFocusable(preferredField)
+    ? preferredField
+    : getAgeField();
+  if (!ageField) return false;
+
+  if (ageField.matches('input')) {
+    await slowType(ageField, String(age), 120);
+    log(`Step 5: Age filled: ${age}`);
+    return true;
+  }
+
+  await setSpinButtonValue(ageField, age);
+  log(`Step 5: Age spinbutton set: ${age}`);
+  return true;
+}
+
 async function step5_fillNameBirthday(payload) {
-  const { firstName, lastName, year, month, day } = payload;
+  const { firstName, lastName, year, month, day, age } = payload;
+  const profileMode = normalizeProfileMode(payload.mode);
   if (!firstName || !lastName) throw new Error('No name data provided.');
+  const resolvedAge = Number.isInteger(age)
+    ? age
+    : (Number.isInteger(year) ? new Date().getFullYear() - year : null);
+  const hasBirthdayData = [year, month, day].every(value => Number.isInteger(value));
 
   const fullName = `${firstName} ${lastName}`;
-  log(`Step 5: Filling name: ${fullName}, Birthday: ${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`);
+  if (profileMode === 'age') {
+    if (!Number.isInteger(resolvedAge)) throw new Error('No age data provided.');
+    log(`Step 5: Filling name: ${fullName}, Age: ${resolvedAge}`);
+  } else {
+    if (!hasBirthdayData) throw new Error('No birthday data provided.');
+    log(`Step 5: Filling name: ${fullName}, Birthday: ${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`);
+  }
 
   // Actual DOM structure:
   // - Full name: <input name="name" placeholder="全名" type="text">
-  // - Birthday: React Aria DateField with 3 spinbutton divs (year/month/day)
+  // - Birthday mode: React Aria DateField with 3 spinbutton divs (year/month/day)
   //   + <input type="hidden" name="birthday" value="2026-04-05">
+  // - Age mode: usually a single numeric input or spinbutton
 
-  // --- Full Name (single field, not first+last) ---
   let nameInput = null;
   try {
     nameInput = await waitForElement(
@@ -292,80 +500,65 @@ async function step5_fillNameBirthday(payload) {
   log(`Step 5: Name filled: ${fullName}`);
   await sleep(800);
 
-  // --- Birthday (React Aria DateField with spinbutton segments) ---
-  // The date field has three contenteditable divs with role="spinbutton"
-  // and data-type="year", data-type="month", data-type="day"
-  // There's also a hidden input[name="birthday"] that stores the actual value
+  if (profileMode === 'age') {
+    let ageInput = null;
+    let birthdayMode = false;
 
-  const yearSpinner = document.querySelector('[role="spinbutton"][data-type="year"]');
-  const monthSpinner = document.querySelector('[role="spinbutton"][data-type="month"]');
-  const daySpinner = document.querySelector('[role="spinbutton"][data-type="day"]');
+    for (let i = 0; i < 100; i++) {
+      const exactAgeInput = document.querySelector('input[name="age"]');
+      const { yearSpinner, monthSpinner, daySpinner } = getBirthdaySpinButtons();
+      const hiddenBirthday = document.querySelector('input[name="birthday"]');
 
-  if (yearSpinner && monthSpinner && daySpinner) {
-    log('Step 5: Found React Aria DateField spinbuttons');
-
-    // Helper to set a spinbutton value via focus + keyboard input
-    async function setSpinButton(el, value) {
-      el.focus();
-      await sleep(100);
-
-      // Select all existing text
-      document.execCommand('selectAll', false, null);
-      await sleep(50);
-
-      // Type the new value digit by digit
-      const valueStr = String(value);
-      for (const char of valueStr) {
-        el.dispatchEvent(new KeyboardEvent('keydown', { key: char, code: `Digit${char}`, bubbles: true }));
-        el.dispatchEvent(new KeyboardEvent('keypress', { key: char, code: `Digit${char}`, bubbles: true }));
-        // Also use InputEvent for React Aria
-        el.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertText', data: char, bubbles: true }));
-        el.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: char, bubbles: true }));
-        await sleep(50);
+      if (exactAgeInput) {
+        ageInput = exactAgeInput;
+        break;
       }
 
-      el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Tab', code: 'Tab', bubbles: true }));
-      el.blur();
+      if ((yearSpinner && monthSpinner && daySpinner) || hiddenBirthday) {
+        birthdayMode = true;
+        break;
+      }
+
       await sleep(100);
     }
 
-    await setSpinButton(yearSpinner, year);
-    log(`Step 5: Year set: ${year}`);
+    const tabTarget = focusNextFieldFrom(nameInput);
+    if (tabTarget) {
+      log('Step 5: Moved focus to next field after name input');
+      await sleep(150);
+    }
 
-    await setSpinButton(monthSpinner, String(month).padStart(2, '0'));
-    log(`Step 5: Month set: ${month}`);
+    const preferredAgeField = ageInput || (tabTarget?.matches?.('input[name="age"]') ? tabTarget : null);
+    const ageFilled = !birthdayMode && await fillAgeField(resolvedAge, preferredAgeField || tabTarget);
+    if (!ageFilled) {
+      if (hasBirthdayFields()) {
+        throw new Error('Current page requires birthday, but plugin is set to age mode. Switch to birthday mode and retry. URL: ' + location.href);
+      }
+      throw new Error('Could not find age input field on signup page. URL: ' + location.href);
+    }
 
-    await setSpinButton(daySpinner, String(day).padStart(2, '0'));
-    log(`Step 5: Day set: ${day}`);
-
-    // Also update the hidden input directly as a safety measure
-    const hiddenBirthday = document.querySelector('input[type="hidden"][name="birthday"]');
-    if (hiddenBirthday) {
+    const hiddenBirthday = document.querySelector('input[name="birthday"]');
+    if (hiddenBirthday && hasBirthdayData) {
       const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       hiddenBirthday.value = dateStr;
       hiddenBirthday.dispatchEvent(new Event('change', { bubbles: true }));
-      log(`Step 5: Hidden birthday input set: ${dateStr}`);
+      log(`Step 5: Hidden birthday input set (age mode): ${dateStr}`);
     }
   } else {
-    // Fallback: try setting hidden input directly
-    const hiddenBirthday = document.querySelector('input[name="birthday"]');
-    if (hiddenBirthday) {
-      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      hiddenBirthday.value = dateStr;
-      hiddenBirthday.dispatchEvent(new Event('change', { bubbles: true }));
-      log(`Step 5: Birthday set via hidden input: ${dateStr}`);
-    } else {
-      log('Step 5: WARNING - Could not find birthday fields. May need to adjust selectors.', 'warn');
+    const birthdayFilled = await fillBirthdayFields(year, month, day);
+    if (!birthdayFilled) {
+      if (hasAgeField()) {
+        throw new Error('Current page requires age, but plugin is set to birthday mode. Switch to age mode and retry. URL: ' + location.href);
+      }
+      throw new Error('Could not find birthday fields on signup page. URL: ' + location.href);
     }
   }
 
-  // Click "完成帐户创建" button
   await sleep(500);
   const completeBtn = document.querySelector('button[type="submit"]')
     || await waitForElementByText('button', /完成|create|continue|finish|done|agree/i, 5000).catch(() => null);
 
-  // Report complete BEFORE submit (page navigates to add-phone after this)
-  log('Step 5: Name & birthday filled, pausing to show result...');
+  log(`Step 5: Name & ${profileMode === 'age' ? 'age' : 'birthday'} filled, pausing to show result...`);
   await sleep(2500);
   reportComplete(5);
 

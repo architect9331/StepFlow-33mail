@@ -31,10 +31,12 @@ const btnFailureStop = document.getElementById('btn-failure-stop');
 const mailGroups = [...document.querySelectorAll('.mail-group')];
 const mailGroupToggles = [...document.querySelectorAll('.mail-group-top')];
 const mailDomainInputs = [...document.querySelectorAll('.mail-domain-input')];
+const profileModeToggles = [...document.querySelectorAll('.mode-toggle-btn')];
 
 let failureCountdownTimer = null;
 let currentMailProvider = '163';
 let mailSettingsState = createDefaultMailSettings();
+let currentProfileMode = 'birthday';
 
 function createDefaultMailSettings() {
   return {
@@ -53,6 +55,10 @@ function normalizeMailSettings(rawSettings, activeProvider = '163', legacyEmailD
     settings[activeProvider].emailDomain = legacyEmailDomain;
   }
   return settings;
+}
+
+function normalizeProfileMode(mode) {
+  return mode === 'age' ? 'age' : 'birthday';
 }
 
 function renderMailGroups({ mailProvider, mailSettings, emailDomain } = {}) {
@@ -82,6 +88,13 @@ function collectMailSettingsFromInputs() {
     nextSettings[provider].emailDomain = input.value.trim();
   });
   return nextSettings;
+}
+
+function renderProfileMode(mode = 'birthday') {
+  currentProfileMode = normalizeProfileMode(mode);
+  profileModeToggles.forEach(toggle => {
+    toggle.classList.toggle('active', toggle.dataset.profileMode === currentProfileMode);
+  });
 }
 
 // ============================================================
@@ -136,6 +149,7 @@ async function restoreState() {
       inputEmail.value = state.email;
     }
     renderMailGroups(state);
+    renderProfileMode(state.profileMode);
     if (state.vpsUrl) {
       inputVpsUrl.value = state.vpsUrl;
     } else if (inputVpsUrl.value) {
@@ -430,6 +444,18 @@ mailGroupToggles.forEach(toggle => {
   });
 });
 
+profileModeToggles.forEach(toggle => {
+  toggle.addEventListener('click', async () => {
+    const profileMode = normalizeProfileMode(toggle.dataset.profileMode);
+    renderProfileMode(profileMode);
+    await chrome.runtime.sendMessage({
+      type: 'SAVE_SETTING',
+      source: 'sidepanel',
+      payload: { profileMode },
+    });
+  });
+});
+
 // ============================================================
 // Listen for Background broadcasts
 // ============================================================
@@ -699,6 +725,7 @@ btnClearAccounts.addEventListener('click', async () => {
 
 initTheme();
 renderMailGroups({ mailProvider: currentMailProvider, mailSettings: mailSettingsState });
+renderProfileMode(currentProfileMode);
 restoreState().then(() => {
   updateButtonStates();
 });

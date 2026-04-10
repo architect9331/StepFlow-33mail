@@ -55,6 +55,7 @@ const DEFAULT_STATE = {
   mailProvider: '163', // 'qq' or '163'
   emailDomain: '',
   mailSettings: createDefaultMailSettings(),
+  profileMode: 'birthday',
 };
 
 async function getState() {
@@ -62,11 +63,13 @@ async function getState() {
   const merged = { ...DEFAULT_STATE, ...state };
   const mailProvider = merged.mailProvider || '163';
   const mailSettings = normalizeMailSettings(merged.mailSettings, mailProvider, merged.emailDomain);
+  const profileMode = merged.profileMode === 'age' ? 'age' : 'birthday';
   return {
     ...merged,
     mailProvider,
     mailSettings,
     emailDomain: mailSettings[mailProvider]?.emailDomain || merged.emailDomain || '',
+    profileMode,
   };
 }
 
@@ -80,7 +83,7 @@ async function resetState() {
   // Close incognito window if still open
   await closeIncognitoWindow();
   // Preserve settings and persistent data across resets
-  const prev = await chrome.storage.session.get(['seenCodes', 'tabRegistry', 'vpsUrl', 'mailProvider', 'emailDomain', 'mailSettings']);
+  const prev = await chrome.storage.session.get(['seenCodes', 'tabRegistry', 'vpsUrl', 'mailProvider', 'emailDomain', 'mailSettings', 'profileMode']);
   const mailProvider = prev.mailProvider || '163';
   const mailSettings = normalizeMailSettings(prev.mailSettings, mailProvider, prev.emailDomain || '');
   await chrome.storage.session.clear();
@@ -93,6 +96,7 @@ async function resetState() {
     mailProvider,
     emailDomain: mailSettings[mailProvider]?.emailDomain || '',
     mailSettings,
+    profileMode: prev.profileMode === 'age' ? 'age' : 'birthday',
   });
 }
 
@@ -683,6 +687,9 @@ async function handleMessage(message, sender) {
       const currentState = await getState();
       const updates = {};
       if (message.payload.vpsUrl !== undefined) updates.vpsUrl = message.payload.vpsUrl;
+      if (message.payload.profileMode !== undefined) {
+        updates.profileMode = message.payload.profileMode === 'age' ? 'age' : 'birthday';
+      }
       const nextProvider = message.payload.mailProvider !== undefined
         ? message.payload.mailProvider
         : currentState.mailProvider;
@@ -1264,14 +1271,27 @@ async function executeStep4(state) {
 }
 
 // ============================================================
-// Step 5: Fill Name & Birthday (via signup-page.js)
+// Step 5: Fill Name & Birthday/Age (via signup-page.js)
 // ============================================================
 
 async function executeStep5(state) {
+  const profileMode = state.profileMode === 'age' ? 'age' : 'birthday';
   const { firstName, lastName } = generateRandomName();
   const { year, month, day } = generateRandomBirthday();
+  const payload = { firstName, lastName, mode: profileMode };
 
-  await addLog(`Step 5: Generated name: ${firstName} ${lastName}, Birthday: ${year}-${month}-${day}`);
+  if (profileMode === 'age') {
+    payload.year = year;
+    payload.month = month;
+    payload.day = day;
+    payload.age = new Date().getFullYear() - year;
+    await addLog(`Step 5: Generated name: ${firstName} ${lastName}, Age: ${payload.age}, Birthday: ${year}-${month}-${day}`);
+  } else {
+    payload.year = year;
+    payload.month = month;
+    payload.day = day;
+    await addLog(`Step 5: Generated name: ${firstName} ${lastName}, Birthday: ${year}-${month}-${day}`);
+  }
 
   const signupTabId = await getTabId('signup-page');
   if (signupTabId) {
@@ -1281,7 +1301,7 @@ async function executeStep5(state) {
     type: 'EXECUTE_STEP',
     step: 5,
     source: 'background',
-    payload: { firstName, lastName, year, month, day },
+    payload,
   });
 }
 

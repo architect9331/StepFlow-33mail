@@ -80,6 +80,17 @@
         </div>
       </div>
       <div class="data-hint">每个 Mail 分组会单独保存 Domain，点击分组即可切换当前收码邮箱</div>
+      <div class="settings-block">
+        <div class="settings-block-header">
+          <span class="data-label">Profile</span>
+          <span class="settings-block-tag">Step 5</span>
+        </div>
+        <div class="mode-toggle" id="profile-mode-toggle">
+          <button type="button" class="mode-toggle-btn active" data-profile-mode="birthday">Birthday</button>
+          <button type="button" class="mode-toggle-btn" data-profile-mode="age">Age</button>
+        </div>
+      </div>
+      <div class="data-hint">切换 Step 5 填写模式：默认填生日，需要时可切换为年龄</div>
       <div class="data-row">
         <span class="data-label">Email</span>
         <input type="text" id="input-email" class="data-input" placeholder="步骤 3 自动生成" title="当前运行生成的邮箱地址" />
@@ -145,7 +156,7 @@
       </div>
       <div class="step-row" data-step="5">
         <div class="step-indicator" data-step="5"><span class="step-num">5</span></div>
-        <button class="step-btn" data-step="5" title="自动填写姓名和生日">Fill Name / Birthday</button>
+        <button class="step-btn" data-step="5" title="自动填写姓名和生日或年龄">Fill Name / Profile</button>
         <span class="step-status" data-step="5"></span>
       </div>
       <div class="step-row" data-step="6">

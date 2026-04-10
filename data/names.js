@@ -13,6 +13,9 @@ const LAST_NAMES = [
   'Lee', 'Perez', 'Thompson', 'White', 'Harris', 'Sanchez', 'Clark', 'Ramirez', 'Lewis', 'Robinson',
 ];
 
+const PROFILE_MIN_AGE = 19;
+const PROFILE_MAX_AGE = 25;
+
 /**
  * Generate a random full name.
  * @returns {{ firstName: string, lastName: string }}
@@ -24,12 +27,20 @@ function generateRandomName() {
 }
 
 /**
+ * Generate a random age (19-25).
+ * @returns {number}
+ */
+function generateRandomAge() {
+  return PROFILE_MIN_AGE + Math.floor(Math.random() * (PROFILE_MAX_AGE - PROFILE_MIN_AGE + 1));
+}
+
+/**
  * Generate a random birthday (age 19-25).
  * @returns {{ year: number, month: number, day: number }}
  */
 function generateRandomBirthday() {
   const currentYear = new Date().getFullYear();
-  const age = 19 + Math.floor(Math.random() * 7); // 19 to 25
+  const age = generateRandomAge();
   const year = currentYear - age;
   const month = 1 + Math.floor(Math.random() * 12); // 1 to 12
   const maxDay = new Date(year, month, 0).getDate(); // days in that month
