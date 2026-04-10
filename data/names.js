@@ -24,15 +24,9 @@ function generateRandomName() {
 }
 
 /**
- * Generate a random birthday (age 19-25).
- * @returns {{ year: number, month: number, day: number }}
+ * 生成随机年龄（20-40 岁）。
+ * @returns {number}
  */
-function generateRandomBirthday() {
-  const currentYear = new Date().getFullYear();
-  const age = 19 + Math.floor(Math.random() * 7); // 19 to 25
-  const year = currentYear - age;
-  const month = 1 + Math.floor(Math.random() * 12); // 1 to 12
-  const maxDay = new Date(year, month, 0).getDate(); // days in that month
-  const day = 1 + Math.floor(Math.random() * maxDay);
-  return { year, month, day };
+function generateRandomAge() {
+  return 20 + Math.floor(Math.random() * 21);
 }

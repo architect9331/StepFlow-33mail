@@ -32,7 +32,7 @@ async function handleCommand(message) {
       switch (message.step) {
         case 2: return await step2_clickRegister();
         case 3: return await step3_fillEmailPassword(message.payload);
-        case 5: return await step5_fillNameBirthday(message.payload);
+        case 5: return await step5_fillNameAge(message.payload);
         case 6: return await step6_findAndClick();
         default: throw new Error(`signup-page.js does not handle step ${message.step}`);
       }
@@ -263,22 +263,17 @@ async function fillVerificationCode(step, payload) {
 }
 
 // ============================================================
-// Step 5: Fill Name & Birthday
+// Step 5：填写姓名与年龄
 // ============================================================
 
-async function step5_fillNameBirthday(payload) {
-  const { firstName, lastName, year, month, day } = payload;
+async function step5_fillNameAge(payload) {
+  const { firstName, lastName, age } = payload;
   if (!firstName || !lastName) throw new Error('No name data provided.');
+  if (!Number.isInteger(age)) throw new Error('No valid age provided.');
 
   const fullName = `${firstName} ${lastName}`;
-  log(`Step 5: Filling name: ${fullName}, Birthday: ${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`);
+  log(`Step 5: Filling name: ${fullName}, Age: ${age}`);
 
-  // Actual DOM structure:
-  // - Full name: <input name="name" placeholder="全名" type="text">
-  // - Birthday: React Aria DateField with 3 spinbutton divs (year/month/day)
-  //   + <input type="hidden" name="birthday" value="2026-04-05">
-
-  // --- Full Name (single field, not first+last) ---
   let nameInput = null;
   try {
     nameInput = await waitForElement(
@@ -292,80 +287,57 @@ async function step5_fillNameBirthday(payload) {
   log(`Step 5: Name filled: ${fullName}`);
   await sleep(800);
 
-  // --- Birthday (React Aria DateField with spinbutton segments) ---
-  // The date field has three contenteditable divs with role="spinbutton"
-  // and data-type="year", data-type="month", data-type="day"
-  // There's also a hidden input[name="birthday"] that stores the actual value
+  const ageSelector = [
+    'input[name="age"]',
+    'input[name*="age" i]',
+    'input[id*="age" i]',
+    'input[placeholder*="age" i]',
+    'input[placeholder*="年龄"]',
+    'input[aria-label*="age" i]',
+    'input[aria-label*="年龄"]',
+    'input[type="number"]',
+    'input[inputmode="numeric"]',
+  ].join(', ');
 
-  const yearSpinner = document.querySelector('[role="spinbutton"][data-type="year"]');
-  const monthSpinner = document.querySelector('[role="spinbutton"][data-type="month"]');
-  const daySpinner = document.querySelector('[role="spinbutton"][data-type="day"]');
+  let ageInput = null;
+  try {
+    ageInput = await waitForElement(ageSelector, 10000);
+  } catch {
+    const candidates = Array.from(document.querySelectorAll('input')).filter((input) => {
+      if (input === nameInput || input.disabled || input.readOnly) return false;
+      if (input.type === 'hidden' || input.type === 'email' || input.type === 'password') return false;
 
-  if (yearSpinner && monthSpinner && daySpinner) {
-    log('Step 5: Found React Aria DateField spinbuttons');
+      const descriptor = [
+        input.name,
+        input.id,
+        input.placeholder,
+        input.getAttribute('aria-label'),
+        input.autocomplete,
+        input.inputMode,
+        input.type,
+      ].filter(Boolean).join(' ').toLowerCase();
 
-    // Helper to set a spinbutton value via focus + keyboard input
-    async function setSpinButton(el, value) {
-      el.focus();
-      await sleep(100);
+      return descriptor.includes('age')
+        || descriptor.includes('年龄')
+        || input.type === 'number'
+        || input.inputMode === 'numeric';
+    });
 
-      // Select all existing text
-      document.execCommand('selectAll', false, null);
-      await sleep(50);
-
-      // Type the new value digit by digit
-      const valueStr = String(value);
-      for (const char of valueStr) {
-        el.dispatchEvent(new KeyboardEvent('keydown', { key: char, code: `Digit${char}`, bubbles: true }));
-        el.dispatchEvent(new KeyboardEvent('keypress', { key: char, code: `Digit${char}`, bubbles: true }));
-        // Also use InputEvent for React Aria
-        el.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertText', data: char, bubbles: true }));
-        el.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: char, bubbles: true }));
-        await sleep(50);
-      }
-
-      el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Tab', code: 'Tab', bubbles: true }));
-      el.blur();
-      await sleep(100);
-    }
-
-    await setSpinButton(yearSpinner, year);
-    log(`Step 5: Year set: ${year}`);
-
-    await setSpinButton(monthSpinner, String(month).padStart(2, '0'));
-    log(`Step 5: Month set: ${month}`);
-
-    await setSpinButton(daySpinner, String(day).padStart(2, '0'));
-    log(`Step 5: Day set: ${day}`);
-
-    // Also update the hidden input directly as a safety measure
-    const hiddenBirthday = document.querySelector('input[type="hidden"][name="birthday"]');
-    if (hiddenBirthday) {
-      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      hiddenBirthday.value = dateStr;
-      hiddenBirthday.dispatchEvent(new Event('change', { bubbles: true }));
-      log(`Step 5: Hidden birthday input set: ${dateStr}`);
-    }
-  } else {
-    // Fallback: try setting hidden input directly
-    const hiddenBirthday = document.querySelector('input[name="birthday"]');
-    if (hiddenBirthday) {
-      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      hiddenBirthday.value = dateStr;
-      hiddenBirthday.dispatchEvent(new Event('change', { bubbles: true }));
-      log(`Step 5: Birthday set via hidden input: ${dateStr}`);
-    } else {
-      log('Step 5: WARNING - Could not find birthday fields. May need to adjust selectors.', 'warn');
-    }
+    ageInput = candidates[0] || null;
   }
 
-  // Click "完成帐户创建" button
+  if (!ageInput) {
+    throw new Error('Could not find age input. URL: ' + location.href);
+  }
+
+  await slowType(ageInput, String(age), 80);
+  log(`Step 5: Age filled: ${age}`);
+
   await sleep(500);
   const completeBtn = document.querySelector('button[type="submit"]')
     || await waitForElementByText('button', /完成|create|continue|finish|done|agree/i, 5000).catch(() => null);
 
-  // Report complete BEFORE submit (page navigates to add-phone after this)
-  log('Step 5: Name & birthday filled, pausing to show result...');
+  log('Step 5: Name & age filled, pausing to show result...');
   await sleep(2500);
   reportComplete(5);
 

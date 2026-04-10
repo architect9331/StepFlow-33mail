@@ -1264,14 +1264,14 @@ async function executeStep4(state) {
 }
 
 // ============================================================
-// Step 5: Fill Name & Birthday (via signup-page.js)
+// Step 5：填写姓名与年龄（通过 signup-page.js）
 // ============================================================
 
 async function executeStep5(state) {
   const { firstName, lastName } = generateRandomName();
-  const { year, month, day } = generateRandomBirthday();
+  const age = generateRandomAge();
 
-  await addLog(`Step 5: Generated name: ${firstName} ${lastName}, Birthday: ${year}-${month}-${day}`);
+  await addLog(`Step 5: Generated name: ${firstName} ${lastName}, Age: ${age}`);
 
   const signupTabId = await getTabId('signup-page');
   if (signupTabId) {
@@ -1281,7 +1281,7 @@ async function executeStep5(state) {
     type: 'EXECUTE_STEP',
     step: 5,
     source: 'background',
-    payload: { firstName, lastName, year, month, day },
+    payload: { firstName, lastName, age },
   });
 }
 
