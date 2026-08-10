@@ -1,3 +1,5 @@
+
+
 # StepFlow 33mail
 
 基于 [StepFlow-Duck](https://github.com/whwh1233/StepFlow-Duck) 改造的 Chromium 扩展，用于自动化完成 ChatGPT OAuth 注册与验证流程。
@@ -101,8 +103,8 @@
    使用当前分组绑定的 33mail 域名生成随机别名邮箱，并自动填写邮箱和密码。
 4. **Get Signup Code**
    打开当前选中的 163 或 QQ 邮箱页面，轮询验证码邮件并自动回填。
-5. **Fill Name / Birthday**
-   自动生成姓名和生日并填写资料。
+5. **Fill Name / Profile**
+   自动生成姓名和生日（或年龄，可通过侧边栏切换）并填写资料。
 6. **Complete OAuth**
    自动点击授权页面的“继续”，捕获 `localhost` 回调地址或直接识别认证成功页面。
 7. **VPS Verify**
